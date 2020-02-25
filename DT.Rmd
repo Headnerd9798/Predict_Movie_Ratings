@@ -1,0 +1,301 @@
+
+```{r}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. 
+
+```{r}
+library("readxl")
+data1 = read_excel("../data/1415CSM_dataset1.xlsx")
+i=1
+data1=na.omit(data1)
+asLabel=""
+for (val in data1$Ratings) {
+  if(val<=5.2){
+    asLabel[i]="Poor"
+  }else if(val<=6.4){
+    asLabel[i]="Average"
+  }else if(val<=7.2){
+    asLabel[i]="Good"
+  }else if(val<=10){
+    asLabel[i]="Excellent"
+  }
+  i=i+1
+}
+# print(asLabel)
+data1 = data.frame(data1,asLabel)
+# print(data1)
+set.seed(10)
+datasize = dim(data1)[1]
+train_idx = sample(datasize, datasize*0.8)
+
+indicator1 = rep(0,datasize)
+indicator1[train_idx] = 1 # 1:train 0:valid
+data1 = data.frame(data1,indicator1)
+# print(data1)
+```
+
+
+## Decision Tree
+```{r}
+library(RWeka)
+library(party)
+
+library(tree)
+train = subset(data1,data1$indicator1==1)
+valid = subset(data1,data1$indicator1==0)
+
+```
+
+```{r}
+conventional_train.df = train[, c("Ratings", "Genre", "Gross", "Budget", "Screens", "Sequel","asLabel")]
+conventional_test.df = valid[, c("Ratings", "Genre", "Gross", "Budget", "Screens", "Sequel","asLabel")]
+socialmedia_train.df = train[, c("Ratings", "Sentiment", "Views", "Likes", "Dislikes", "Comments", "Aggregate.Followers","asLabel")]
+socialmedia_test.df = valid[, c("Ratings", "Sentiment", "Views", "Likes", "Dislikes", "Comments", "Aggregate.Followers","asLabel")]
+```
+## 1
+```{r}
+# ctt1 = tree(asLabel~.-Ratings,conventional_train.df)
+ctt1 = J48(asLabel~.-Ratings,conventional_train.df)
+# if(require("party", quietly = TRUE)) plot(m1)
+```
+## 2
+```{r}
+# ctt2 = tree(asLabel~.-Ratings,socialmedia_train.df)
+ctt2 = J48(asLabel~.-Ratings,socialmedia_train.df)
+# if(require("party", quietly = TRUE)) plot(m1)
+```
+
+## Prune Tree
+```{r}
+# ctt1 = tree(asLabel~.-Ratings,conventional_train.df,mindev=0.01)
+ctt1 = J48(asLabel~.,subset(conventional_train.df, select = -c(Ratings)), control = Weka_control(R=FALSE))
+# I change mindev from 0.01 to 0.9 to see the best performance. choose 0.03
+```
+
+## Prune Tree 2
+```{r}
+# ctt2 = tree(asLabel~.-Ratings,socialmedia_train.df,mindev=0.01)
+ctt2 = J48(asLabel~.,subset(socialmedia_train.df, select = -c(Ratings)))
+# I change mindev from 0.01 to 0.9 to see the best performance. choose 0.03
+```
+
+## Plot tree
+```{r}
+plot(ctt1)
+# text(ctt1)
+summary(ctt1)
+ctt1
+```
+## Plot tree2
+```{r}
+plot(ctt2)
+# text(ctt2)
+summary(ctt2)
+ctt2
+```
+
+## 1
+```{r}
+library(rpart)
+library(rpart.plot)
+png("../figures/j48_conv_tree.png", width = 7, height = 7, units = 'in', res = 300)
+pretty_tree1=rpart(asLabel~.-Ratings,data=conventional_train.df,cp=0.01)
+rpart.plot(pretty_tree1,box.palette = "RdBu",shadow.col = "gray",nn=TRUE)
+dev.off()
+```
+## 2
+```{r}
+
+png("../figures/j48_social_tree.png", width = 7, height = 7, units = 'in', res = 300)
+pretty_tree2=rpart(asLabel~.-Ratings,data=socialmedia_train.df,cp=0.02)
+rpart.plot(pretty_tree2,box.palette = "RdBu",shadow.col = "gray",nn=TRUE)
+dev.off()
+```
+
+```{r}
+# print(ctt1)
+```
+
+## Predict 1 (below with the train and validation set)
+```{r}
+PredLabel1 = predict(ctt1,conventional_train.df,type="class")
+PredTreeScore1 = data.frame(predict(ctt1,conventional_train.df,type="probability"))
+train1 = data.frame(conventional_train.df,PredLabel1,PredTreeScore1)
+
+## test
+PredLabelValid1 = predict(ctt1,conventional_test.df,type="class")
+PredTreeScoreValid1 = data.frame(predict(ctt1,conventional_test.df,type="probability"))
+valid1 = data.frame(conventional_test.df,PredLabelValid1,PredTreeScoreValid1)
+```
+
+
+
+```{r}
+library(dplyr)
+library(tidyr)
+library(caret)
+library(ggplot2)
+library(reshape2)
+pred = factor(PredLabelValid1)
+levels(pred)
+truth = factor(conventional_test.df$asLabel)
+levels(truth)
+confusionMatrix(pred, truth)
+input.mat = as.matrix(confusionMatrix(pred, truth))
+normalized.mat = sweep(input.mat, 2, colSums(input.mat), "/" )
+melt.mat <- melt(normalized.mat)
+ggplot(data = melt.mat, aes(x=Var1, y=Var2, fill=value)) + 
+  geom_tile() + ggtitle("Confusion Matrix of  decision tree J48 for conventional features") +
+  xlab("Prediction") + ylab("truth") + labs(fill = "frequency")
+ggsave("../figures/j48_conv_confusion.png")
+```
+
+
+## Predict 2 (below with the train and validation set)
+```{r}
+PredLabel2 = predict(ctt2,socialmedia_train.df,type="class")
+PredTreeScore2 = data.frame(predict(ctt2,socialmedia_train.df,type="class"))
+train2 = data.frame(socialmedia_train.df,PredLabel2,PredTreeScore2)
+
+## test
+PredLabelValid2 = predict(ctt2,socialmedia_test.df,type="class")
+PredTreeScoreValid2 = data.frame(predict(ctt2,socialmedia_test.df,type="class"))
+valid2 = data.frame(socialmedia_test.df,PredLabelValid2,PredTreeScoreValid2)
+```
+
+```{r}
+pred = factor(PredLabelValid2)
+levels(pred)
+truth = factor(socialmedia_test.df$asLabel)
+levels(truth)
+confusionMatrix(pred, truth)
+input.mat = as.matrix(confusionMatrix(pred, truth))
+normalized.mat = sweep(input.mat, 2, colSums(input.mat), "/" )
+melt.mat <- melt(normalized.mat)
+ggplot(data = melt.mat, aes(x=Var1, y=Var2, fill=value)) + 
+  geom_tile() + ggtitle("Confusion Matrix of  decision tree J48 for social media features") +
+  xlab("Prediction") + ylab("truth") + labs(fill = "frequency")
+ggsave("../figures/j48_social_confusion.png")
+```
+
+
+```
+
+## Give out the validation error rate
+```{r}
+tablev1 = table(valid1$PredLabelValid1,valid1$asLabel)
+error_valid1 = 1 - sum(diag(tablev1)) / sum(tablev1)
+error_valid1
+print(tablev1)
+```
+
+## Give out the validation error rate 2
+```{r}
+tablev2 = table(valid2$PredLabelValid2,valid2$asLabel)
+error_valid2 = 1 - sum(diag(tablev2)) / sum(tablev2)
+error_valid2
+print(tablev2)
+```
+
+## The following code block is lable_tran_num function. We may use it.
+```{r}
+# # train
+# print(train$asLabel)
+# print(train$Ratings)
+# print(PredTreeScore1)
+# print(train$asLabel_d)
+# label2point=0;
+
+# n=1
+# for (m in train$asLabel) {
+#   if(identical(m,"Poor")){
+#     label2point[n]=1
+#   }else if(identical(m,"Average")){
+#     label2point[n]=2
+#   }else if(identical(m,"Good")){
+#     label2point[n]=3
+#   }else if(identical(m,"Excellent")){
+#     label2point[n]=4
+#   }
+#   n=n+1
+# }
+# print(label2point)
+# 
+# label2point_valid=0;
+# q=1
+# for (p in valid$asLabel) {
+#   if(identical(p,"Poor")){
+#     label2point_valid[q]=1
+#   }else if(identical(p,"Average")){
+#     label2point_valid[q]=2
+#   }else if(identical(p,"Good")){
+#     label2point_valid[q]=3
+#   }else if(identical(p,"Excellent")){
+#     label2point_valid[q]=4
+#   }
+#   q=q+1
+# }
+# print(label2point_valid)
+# # train_res=(PredTreeScore1$Poor)*4.9+(PredTreeScore1$Average)*6.4+(PredTreeScore1$Good)*8.9
+# # print(train_res)
+# 
+# train_res_label=1:184
+# n=1
+# for (m in 1:184) {
+#   if((PredTreeScore1[m,]$Poor)>0.5){
+#     train_res_label[n]=1
+#   }else if((PredTreeScore1[m,]$Average)>0.5){
+#     train_res_label[n]=2
+#   }else if((PredTreeScore1[m,]$Good)>0.5){
+#     train_res_label[n]=3
+#   }
+#   n=n+1
+# }
+# print(train_res_label)
+# 
+# val_res_label=1:47
+# n=1
+# for (m in 1:47) {
+#   if((PredTreeScoreValid1[m,]$Poor)>0.5){
+#     val_res_label[n]=1
+#   }else if((PredTreeScoreValid1[m,]$Average)>0.5){
+#     val_res_label[n]=2
+#   }else if((PredTreeScoreValid1[m,]$Good)>0.5){
+#     val_res_label[n]=3
+#   }
+#   n=n+1
+# }
+# # print(train_res_label)
+# print(val_res_label)
+```
+
+
+```{r}
+# # gtt = gains(actual=train$asLabel,predicted=PredTreeScore1,optimal=TRUE)
+# library("gains")
+# gtt = gains(actual=label2point,
+#             predicted=train_res_label,
+#             optimal=TRUE)
+# cpt_y = gtt$cume.pct.of.total
+# cpt_x = gtt$depth
+# # 
+# # # validation
+# 
+# # print((PredTreeScoreValid1$Poor)*4.9+(PredTreeScoreValid1$Average)*6.4+(PredTreeScoreValid1$Good)*8.9)
+# # 
+# gtv = gains(actual=label2point_valid,
+#             predicted=val_res_label,
+#             optimal=TRUE)
+# cpv_y = gtv$cume.pct.of.total
+# cpv_x = gtv$depth
+```
+
+
+
+
+
+

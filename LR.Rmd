@@ -1,0 +1,326 @@
+
+```{r}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+# data load
+
+```{r}
+library("readxl")
+data1 = read_excel("../data/1415CSM_dataset1.xlsx")
+i=1
+asLabel=""
+for (val in data1$Ratings) {
+  if(val<=5.2){
+    asLabel[i]="Poor"
+  }else if(val<=6.4){
+    asLabel[i]="Average"
+  }else if(val<=7.5){
+    asLabel[i]="Good"
+  }else if(val<=10){
+    asLabel[i]="Excellent"
+  }
+  i=i+1
+}
+# print(asLabel)
+data1 = data.frame(data1,asLabel)
+# print(data1)
+set.seed(10)
+datasize = dim(data1)[1]
+train_idx = sample(datasize, datasize*0.8)
+
+indicator1 = rep(0,datasize)
+indicator1[train_idx] = 1 # 1:train 0:valid
+data1 = na.omit(data.frame(data1,indicator1))
+data1$Genre = as.factor(data1$Genre)
+data1$Sequel = as.factor(data1$Sequel)
+```
+
+```{r}
+train.df = subset(data1,data1$indicator1==1)
+test.df = subset(data1,data1$indicator1==0)
+```
+
+
+
+```{r}
+num2factor <- function(val)
+{
+  if(val<=4.9){
+    return("Poor")
+  }else if(val<=6.4){
+    return("Average")
+  }else if(val<=8.9){
+    return("Good")
+  }else if(val<=10){
+    return("Excellent")
+  }
+}
+```
+
+```{r}
+conventional_train.df = train.df[, c("Ratings", "Genre", "Gross", "Budget", "Screens", "Sequel")]
+conventional_test.df = test.df[, c("Ratings", "Genre", "Gross", "Budget", "Screens", "Sequel")]
+socialmedia_train.df = train.df[, c("Ratings", "Sentiment", "Views", "Likes", "Dislikes", "Comments", "Aggregate.Followers")]
+socialmedia_test.df = test.df[, c("Ratings", "Sentiment", "Views", "Likes", "Dislikes", "Comments", "Aggregate.Followers")]
+```
+
+# simple linear regression
+
+Just start regression, not the final model
+
+## Conventional features
+
+```{r}
+num2factor <- function(val)
+{
+  if(val<=4.9){
+    return("Poor")
+  }else if(val<=6.4){
+    return("Average")
+  }else if(val<=7.5){
+    return("Good")
+  }else if(val<=10){
+    return("Excellent")
+  }
+}
+
+```
+
+```{r}
+conventional.lm = lm(Ratings ~ ., data = conventional_train.df)
+conventional.pred = predict(conventional.lm, conventional_test.df, type="response")
+mean((conventional.pred - conventional_test.df$Ratings)^2)
+# soft accuracy
+sum(abs(conventional.pred - conventional_test.df$Ratings) < 1)/nrow(conventional_test.df)
+
+# classification
+conventional.pred<-  mapply(num2factor, conventional.pred)
+conventional_test.df$asLabel <- mapply(num2factor, conventional_test.df$Ratings)
+sum(conventional.pred==conventional_test.df$asLabel)/nrow(conventional_test.df)
+```
+
+```{r}
+summary(conventional.lm)
+
+plot(conventional.lm)
+```
+
+```{r}
+library(dplyr)
+library(tidyr)
+library(caret)
+library(ggplot2)
+library(reshape2)
+# confusion matrix
+pred = factor(conventional.pred)
+levels(pred)
+truth = factor(conventional_test.df$asLabel)
+levels(truth)
+confusionMatrix(pred, truth)
+input.mat = as.matrix(confusionMatrix(pred, truth))
+normalized.mat = sweep(input.mat, 2, colSums(input.mat), "/" )
+melt.mat <- melt(normalized.mat)
+ggplot(data = melt.mat, aes(x=Var1, y=Var2, fill=value)) + 
+  geom_tile() + ggtitle("Confusion Matrix of  linear regression for conventional features") +
+  xlab("Prediction") + ylab("truth") + labs(fill = "frequency")
+```
+## Soical Media features
+
+```{r}
+socialmedia.lm = lm(Ratings ~ ., data = socialmedia_train.df)
+socialmedia.pred = predict(socialmedia.lm, socialmedia_test.df)
+mean((socialmedia.pred - socialmedia_test.df$Ratings)^2)
+# soft accuracy
+sum(abs(socialmedia.pred - socialmedia_test.df$Ratings) < 1)/nrow(socialmedia_test.df)
+
+# classification
+socialmedia.pred <-  mapply(num2factor, socialmedia.pred)
+socialmedia_test.df$asLabel <- mapply(num2factor, socialmedia_test.df$Ratings)
+sum(socialmedia.pred==socialmedia_test.df$asLabel)/nrow(socialmedia_test.df)
+```
+
+```{r}
+summary(socialmedia.lm)
+plot(socialmedia.lm)
+```
+
+```{r}
+
+pred = factor(socialmedia.pred)
+levels(pred)
+truth = factor(socialmedia_test.df$asLabel)
+levels(truth)
+confusionMatrix(pred, truth)
+input.mat = as.matrix(confusionMatrix(pred, truth))
+normalized.mat = sweep(input.mat, 2, colSums(input.mat), "/" )
+melt.mat <- melt(normalized.mat)
+ggplot(data = melt.mat, aes(x=Var1, y=Var2, fill=value)) + 
+  geom_tile() + ggtitle("Confusion Matrix of  linear regression for social media features") +
+  xlab("Prediction") + ylab("truth") + labs(fill = "frequency")
+```
+# Generalised linear regression model
+
+## Conventional features
+
+```{r}
+conventional.glm = glm(Ratings ~ ., data = conventional_train.df, family = Gamma (link = "log"))
+conventional.pred = predict(conventional.glm, conventional_test.df, type="response")
+mean((conventional.pred - conventional_test.df$Ratings)^2)
+
+```
+
+
+```{r}
+summary(conventional.glm)
+plot(conventional.glm)
+```
+
+```{r}
+
+# soft accuracy
+sum(abs(conventional.pred - conventional_test.df$Ratings) < 1)/nrow(conventional_test.df)
+
+# classification
+conventional.pred<-  mapply(num2factor, conventional.pred)
+conventional_test.df$asLabel <- mapply(num2factor, conventional_test.df$Ratings)
+sum(conventional.pred==conventional_test.df$asLabel)/nrow(conventional_test.df)
+```
+
+```{r}
+pred = factor(conventional.pred)
+levels(pred)
+truth = factor(conventional_test.df$asLabel)
+levels(truth)
+confusionMatrix(pred, truth)
+input.mat = as.matrix(confusionMatrix(pred, truth))
+normalized.mat = sweep(input.mat, 2, colSums(input.mat), "/" )
+melt.mat <- melt(normalized.mat)
+ggplot(data = melt.mat, aes(x=Var1, y=Var2, fill=value)) + 
+  geom_tile() + ggtitle("Confusion Matrix of  linear regression for social media features") +
+  xlab("Prediction") + ylab("truth") + labs(fill = "frequency")
+```
+
+## Soical Media features
+
+```{r}
+socialmedia.glm = glm(Ratings ~ ., data = socialmedia_train.df, family =  Gamma (link = "log"))
+socialmedia.pred = exp(predict(socialmedia.glm, socialmedia_test.df))
+mean((socialmedia.pred - socialmedia_test.df$Ratings)^2)
+
+```
+
+```{r}
+summary(socialmedia.glm)
+plot(socialmedia.glm)
+```
+
+```{r}
+# soft accuracy
+sum(abs(socialmedia.pred - socialmedia_test.df$Ratings) < 1)/nrow(socialmedia_test.df)
+
+# classification
+socialmedia.pred <-  mapply(num2factor, socialmedia.pred)
+socialmedia_test.df$asLabel <- mapply(num2factor, socialmedia_test.df$Ratings)
+sum(socialmedia.pred==socialmedia_test.df$asLabel)/nrow(socialmedia_test.df)
+```
+
+```{r}
+
+pred = factor(socialmedia.pred)
+levels(pred)
+truth = factor(socialmedia_test.df$asLabel)
+levels(truth)
+confusionMatrix(pred, truth)
+input.mat = as.matrix(confusionMatrix(pred, truth))
+normalized.mat = sweep(input.mat, 2, colSums(input.mat), "/" )
+melt.mat <- melt(normalized.mat)
+ggplot(data = melt.mat, aes(x=Var1, y=Var2, fill=value)) + 
+  geom_tile() + ggtitle("Confusion Matrix of  linear regression for social media features") +
+  xlab("Prediction") + ylab("truth") + labs(fill = "frequency")
+```
+
+# Generalised additive regression model
+
+## Conventional features
+
+```{r}
+library(gam)
+conventional.gam = gam(Ratings ~ ., data = conventional_train.df, family = Gamma (link = "inverse"))
+conventional.pred = predict(conventional.gam, conventional_test.df, type="response")
+mean((conventional.pred - conventional_test.df$Ratings)^2)
+
+```
+
+
+```{r}
+summary(conventional.gam)
+plot(conventional.gam)
+```
+
+```{r}
+
+# soft accuracy
+sum(abs(conventional.pred - conventional_test.df$Ratings) < 1)/nrow(conventional_test.df)
+
+# classification
+conventional.pred<-  mapply(num2factor, conventional.pred)
+conventional_test.df$asLabel <- mapply(num2factor, conventional_test.df$Ratings)
+sum(conventional.pred==conventional_test.df$asLabel)/nrow(conventional_test.df)
+```
+
+```{r}
+pred = factor(conventional.pred)
+levels(pred)
+truth = factor(conventional_test.df$asLabel)
+levels(truth)
+confusionMatrix(pred, truth)
+input.mat = as.matrix(confusionMatrix(pred, truth))
+normalized.mat = sweep(input.mat, 2, colSums(input.mat), "/" )
+melt.mat <- melt(normalized.mat)
+ggplot(data = melt.mat, aes(x=Var1, y=Var2, fill=value)) + 
+  geom_tile() + ggtitle("Confusion Matrix of  linear regression for social media features") +
+  xlab("Prediction") + ylab("truth") + labs(fill = "frequency")
+```
+
+
+## Soical Media features
+
+```{r}
+socialmedia.gam = gam(Ratings ~ ., data = socialmedia_train.df, family =  Gamma (link = "inverse"))
+socialmedia.pred = 1/predict(socialmedia.gam, socialmedia_test.df)
+mean((socialmedia.pred - socialmedia_test.df$Ratings)^2)
+
+```
+
+```{r}
+summary(socialmedia.gam)
+plot(socialmedia.gam)
+```
+
+```{r}
+# soft accuracy
+sum(abs(socialmedia.pred - socialmedia_test.df$Ratings) < 1)/nrow(socialmedia_test.df)
+
+# classification
+socialmedia.pred <-  mapply(num2factor, socialmedia.pred)
+socialmedia_test.df$asLabel <- mapply(num2factor, socialmedia_test.df$Ratings)
+sum(socialmedia.pred==socialmedia_test.df$asLabel)/nrow(socialmedia_test.df)
+```
+
+```{r}
+
+pred = factor(socialmedia.pred)
+levels(pred)
+truth = factor(socialmedia_test.df$asLabel)
+levels(truth)
+confusionMatrix(pred, truth)
+input.mat = as.matrix(confusionMatrix(pred, truth))
+normalized.mat = sweep(input.mat, 2, colSums(input.mat), "/" )
+melt.mat <- melt(normalized.mat)
+ggplot(data = melt.mat, aes(x=Var1, y=Var2, fill=value)) + 
+  geom_tile() + ggtitle("Confusion Matrix of  linear regression for social media features") +
+  xlab("Prediction") + ylab("truth") + labs(fill = "frequency")
+```
+

@@ -1,0 +1,109 @@
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+---
+title: "Naive_Bayesian_Classification"
+author: "hz2619"
+date: "12/16/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+## import xlsx and make label
+```{r}
+library(readxl)
+
+data1 <- read_xlsx("../data/1415CSM_dataset.xlsx")
+i=1
+asLabel=""
+for (val in data1$Ratings) {
+  if(val<=5.2){
+    asLabel[i]="Poor"
+  }else if(val<=6.4){
+    asLabel[i]="Average"
+  }else if(val<=7.2){
+    asLabel[i]="Good"
+  }else if(val<=10){
+    asLabel[i]="Excellent"
+  }
+  i=i+1
+}
+data1 <- scale(data1[,4:14])
+data1 = data.frame(data1,asLabel)
+data1 
+```
+
+
+## split the whole dataset into train and test dataset (80% : 20%)
+```{r}
+set.seed(10) ## Randomize set.seed to 10
+data1 = data.frame(data1,asLabel)
+datasize = dim(data1)[1]
+train_idx = sample(datasize, datasize*0.8)
+indicator1 = rep(0,datasize)
+indicator1[train_idx] = 1 ## 1:train 0:valid
+data1 = data.frame(data1,indicator1)
+train = subset(data1,data1$indicator1==1)
+test = subset(data1,data1$indicator1==0)
+```
+## support vector machine - conventional feature
+```{r}
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(scales)
+library(reshape2)
+library(e1071)
+library(caret)
+svm_conventional <-svm(asLabel ~ Genre+Budget+Screens+Sequel+Gross, data = train,kernel = "radial") ## hyperplane
+pred.svm.conventinoal <- predict(svm_conventional,newdata = test)
+test = na.omit(test) ### delete NA !!!!!!
+cfm_svm_conventional <- confusionMatrix(pred.svm.conventinoal,test$asLabel)
+input.mat.test_conventional = as.matrix(cfm_svm_conventional)
+normalized.mat.test_conventional = sweep(input.mat.test_conventional, 2, colSums(input.mat.test_conventional), "/" )
+melt.mat.test_conventional <- melt(normalized.mat.test_conventional)
+ggplot(data = melt.mat.test_conventional, aes(x=Var1, y=Var2, fill=value)) + 
+  geom_tile() + ggtitle("Confusion Matrix of Support Vector Machine Conventional Feature") +
+  xlab("Prediction") + ylab("Actual") + labs(fill = "frequency")
+cfm_svm_conventional
+
+
+```
+## support vector machine - social media feature
+```{r}
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(scales)
+library(reshape2)
+library(e1071)
+library(caret)
+svm_social_media <-svm(asLabel ~ Aggregate.Followers+Sentiment+Views+Likes+Dislikes+Comments, data = train,kernel = "polynomial",gemma = 1, coef0 = 7, degree = 3) ### hyperplane
+pred.svm.social_media <- predict(svm_social_media,newdata = test)
+test = na.omit(test) ### delete NA !!!!!!
+cfm_svm_social_media <- confusionMatrix(pred.svm.social_media,test$asLabel)
+input.mat.test_social_media = as.matrix(cfm_svm_conventional)
+normalized.mat.test_social_media = sweep(input.mat.test_social_media, 2, colSums(input.mat.test_social_media), "/" )
+melt.mat.test_social_media <- melt(normalized.mat.test_social_media)
+ggplot(data = melt.mat.test_social_media, aes(x=Var1, y=Var2, fill=value)) + 
+  geom_tile() + ggtitle("Confusion Matrix of Support Vector Machine Social Media Feature") +
+  xlab("Prediction") + ylab("Actual") + labs(fill = "frequency")
+cfm_svm_social_media
+```

@@ -1,0 +1,169 @@
+---
+title: "neural_network"
+author: "Wenjie Chen"
+date: "12/8/2019"
+output: html_document
+---
+
+```{r}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. 
+
+```{r}
+library("readxl")
+data1 = read_excel("../data/1415CSM_dataset1.xlsx")
+i=1
+data1=na.omit(data1)
+asLabel=""
+for (val in data1$Ratings) {
+  if(val<=5.2){
+    asLabel[i]="Poor"
+  }else if(val<=6.4){
+    asLabel[i]="Average"
+  }else if(val<=7.2){
+    asLabel[i]="Good"
+  }else if(val<=10){
+    asLabel[i]="Excellent"
+  }
+  i=i+1
+}
+# print(data1)
+
+# normalization
+scaled.dat <- scale(data1[,4:14])
+
+# print(asLabel)
+# print(scaled.dat)
+data1 = data.frame(scaled.dat,asLabel)
+
+set.seed(10)
+datasize = dim(data1)[1]
+train_idx = sample(datasize, datasize*0.8)
+
+indicator1 = rep(0,datasize)
+indicator1[train_idx] = 1 # 1:train 0:valid
+data1 = data.frame(data1,indicator1)
+print(data1)
+train = subset(data1,data1$indicator1==1)
+valid = subset(data1,data1$indicator1==0)
+```
+
+```{r}
+# train = train[, c("Genre", "Gross", "Budget", "Screens", "Sequel","asLabel")]
+# valid = valid[, c("Genre", "Gross", "Budget", "Screens", "Sequel","asLabel")]
+# train = train[, c("Sentiment", "Views", "Likes", "Dislikes", "Comments", "Aggregate.Followers","asLabel")]
+# valid = valid[, c("Sentiment", "Views", "Likes", "Dislikes", "Comments", "Aggregate.Followers","asLabel")]
+```
+
+# set up ANN formula
+```{r}
+names = names(train)
+f <- as.formula(paste("asLabel ~", paste(names[!names %in% c("asLabel","indicator1")], collapse = " + ")))
+```
+
+# use nn
+```{r}
+library(nnet)
+set.seed(12)
+targets <- class.ind(train$asLabel)
+#net <- nnet(f, data = train_norm, size = 5, rang=0.2, decay=5e-4, maxit = 200)
+net <- nnet(f, data = train, size = 20, rang=0.2, decay=5e-4, maxit = 250, skip=1)
+```
+```{r}
+# print(pred1)
+# print(train_res_label)
+# print(train$asLabel)
+```
+
+
+
+```{r}
+# train
+pred = predict(net, train)
+pred1=round(pred)
+# print(pred1)
+train_res_label=""
+n=1
+for (m in 1:(length(pred)/4)) {
+  if((pred[m,1])==max(pred[m,1],pred[m,2],pred[m,3],pred[m,4])){
+    train_res_label[n]="Average"
+  }else if((pred[m,2])==max(pred[m,1],pred[m,2],pred[m,3],pred[m,4])){
+    train_res_label[n]="Excellent"
+  }else if((pred[m,3])==max(pred[m,1],pred[m,2],pred[m,3],pred[m,4])){
+    train_res_label[n]="Good"
+  }else if((pred[m,4])==max(pred[m,1],pred[m,2],pred[m,3],pred[m,4])){
+    train_res_label[n]="Poor"
+  }
+  n=n+1
+}
+train_res_label=as.factor(train_res_label)
+print(train_res_label)
+# print(train$asLabel)
+tt = table(pred = train_res_label, actual = train$asLabel)
+error_train = 1 - sum(diag(tt)) / sum(tt)
+
+# valid
+predV = predict(net, valid)
+pred2=round(predV)
+valid_res_label=""
+n=1
+for (q in 1:(length(predV)/4)) {
+  if((predV[q,1])==max(predV[q,1],predV[q,2],predV[q,3],predV[q,4])){
+    valid_res_label[n]="Average"
+  }else if((predV[q,2])==max(predV[q,1],predV[q,2],predV[q,3],predV[q,4])){
+    valid_res_label[n]="Excellent"
+  }else if((predV[q,3])==max(predV[q,1],predV[q,2],predV[q,3],predV[q,4])){
+    valid_res_label[n]="Good"
+  }else if((predV[q,4])==max(predV[q,1],predV[q,2],predV[q,3],predV[q,4])){
+    valid_res_label[n]="Poor"
+  }
+  n=n+1
+}
+valid_res_label=as.factor(valid_res_label)
+tv = table(pred =valid_res_label, actual = valid$asLabel)
+error_valid = 1 - sum(diag(tv)) / sum(tv)
+
+print(1-error_train)
+print(1-error_valid)
+```
+```{r}
+print(valid_res_label)
+print(valid$asLabel)
+```
+
+```{r}
+print(tv)
+```
+```{r}
+library(reshape2)
+library(ggplot2)
+library(caret)
+pred = factor(valid_res_label)
+
+truth = factor(valid$asLabel)
+
+confusionMatrix(pred, truth)
+input.mat = as.matrix(confusionMatrix(pred, truth))
+normalized.mat = sweep(input.mat, 2, colSums(input.mat), "/" )
+melt.mat <- melt(normalized.mat)
+ggplot(data = melt.mat, aes(x=Var1, y=Var2, fill=value)) + 
+  geom_tile() + ggtitle("Confusion Matrix of Artificial Neural Network for social media features") +
+  xlab("Prediction") + ylab("truth") + labs(fill = "frequency")
+
+```
+
+
+
+
+
+
+
+
+
+
+
+

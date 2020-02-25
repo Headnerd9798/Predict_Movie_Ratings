@@ -1,0 +1,142 @@
+
+```{r}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+# data load
+```{r}
+library("readxl")
+data1 = read_excel("../data/1415CSM_dataset1.xlsx")
+i=1
+asLabel=""
+for (val in data1$Ratings) {
+  if(val<=5.2){
+    asLabel[i]="Poor"
+  }else if(val<=6.4){
+    asLabel[i]="Average"
+  }else if(val<=7.5){
+    asLabel[i]="Good"
+  }else if(val<=10){
+    asLabel[i]="Excellent"
+  }
+  i=i+1
+}
+# print(asLabel)
+data1 = data.frame(data1,asLabel)
+# print(data1)
+set.seed(10)
+datasize = dim(data1)[1]
+train_idx = sample(datasize, datasize*0.8)
+
+indicator1 = rep(0,datasize)
+indicator1[train_idx] = 1 # 1:train 0:valid
+data1 = na.omit(data.frame(data1,indicator1))
+data1$Genre = as.factor(data1$Genre)
+data1$Sequel = as.factor(data1$Sequel)
+```
+
+```{r}
+train.df = subset(data1,data1$indicator1==1)
+test.df = subset(data1,data1$indicator1==0)
+```
+
+
+
+```{r}
+num2factor <- function(val)
+{
+  if(val<=4.9){
+    return("Poor")
+  }else if(val<=6.4){
+    return("Average")
+  }else if(val<=8.9){
+    return("Good")
+  }else if(val<=10){
+    return("Excellent")
+  }
+}
+```
+
+```{r}
+conventional_train.df = train.df[, c("asLabel", "Genre", "Gross", "Budget", "Screens", "Sequel")]
+conventional_test.df = test.df[, c("asLabel", "Genre", "Gross", "Budget", "Screens", "Sequel")]
+socialmedia_train.df = train.df[, c("asLabel", "Sentiment", "Views", "Likes", "Dislikes", "Comments", "Aggregate.Followers")]
+socialmedia_test.df = test.df[, c("asLabel", "Sentiment", "Views", "Likes", "Dislikes", "Comments", "Aggregate.Followers")]
+```
+
+# Random Forest
+
+## conventional features
+
+```{r}
+library(randomForest)
+conventional.mod <- randomForest(asLabel ~., data = conventional_train.df, replace=T, importance=TRUE, 
+                      ntree=20)
+plot(conventional.mod)
+summary(conventional.mod)
+varImpPlot(conventional.mod)
+```
+
+
+```{r}
+conventional.pred = predict(conventional.mod, conventional_test.df, type="response")
+
+
+# classification
+sum(conventional.pred==conventional_test.df$asLabel)/nrow(conventional_test.df)
+```
+
+```{r}
+library(dplyr)
+library(tidyr)
+library(caret)
+library(ggplot2)
+library(reshape2)
+# confusion matrix
+pred = factor(conventional.pred)
+levels(pred)
+truth = factor(conventional_test.df$asLabel)
+levels(truth)
+confusionMatrix(pred, truth)
+input.mat = as.matrix(confusionMatrix(pred, truth))
+normalized.mat = sweep(input.mat, 2, colSums(input.mat), "/" )
+melt.mat <- melt(normalized.mat)
+ggplot(data = melt.mat, aes(x=Var1, y=Var2, fill=value)) + 
+  geom_tile() + ggtitle("Confusion Matrix of  random forest for conventional features") +
+  xlab("Prediction") + ylab("truth") + labs(fill = "frequency")
+```
+
+
+## soical media
+
+```{r}
+socialmedia.mod <- randomForest(asLabel ~., data = socialmedia_train.df, importance=TRUE, 
+                      ntree=20)
+plot(socialmedia.mod)
+summary(socialmedia.mod)
+varImpPlot(socialmedia.mod)
+```
+
+
+```{r}
+socialmedia.pred = predict(socialmedia.mod, socialmedia_test.df, type="response")
+
+# classification
+sum(socialmedia.pred==socialmedia_test.df$asLabel)/nrow(socialmedia_test.df)
+```
+
+
+```{r}
+pred = factor(socialmedia.pred)
+levels(pred)
+truth = factor(socialmedia_test.df$asLabel)
+levels(truth)
+confusionMatrix(pred, truth)
+input.mat = as.matrix(confusionMatrix(pred, truth))
+normalized.mat = sweep(input.mat, 2, colSums(input.mat), "/" )
+melt.mat <- melt(normalized.mat)
+ggplot(data = melt.mat, aes(x=Var1, y=Var2, fill=value)) + 
+  geom_tile() + ggtitle("Confusion Matrix of  random forest for social media features") +
+  xlab("Prediction") + ylab("truth") + labs(fill = "frequency")
+```

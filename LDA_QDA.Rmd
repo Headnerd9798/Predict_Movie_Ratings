@@ -1,0 +1,160 @@
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+## import xlsx and make label
+```{r}
+library(readxl)
+
+data1 <- read_xlsx("../data/1415CSM_dataset1.xlsx")
+i=1
+asLabel=""
+for (val in data1$Ratings) {
+  if(val<=5.2){
+    asLabel[i]="Poor"
+  }else if(val<=6.4){
+    asLabel[i]="Average"
+  }else if(val<=7.2){
+    asLabel[i]="Good"
+  }else if(val<=10){
+    asLabel[i]="Excellent"
+  }
+  i=i+1
+}
+data1 <- scale(data1[,4:14])
+data1 = data.frame(data1,asLabel)
+data1 
+```
+
+
+## split the whole dataset into train and test dataset (80% : 20%)
+```{r}
+set.seed(10) ## Randomize set.seed to 10
+data1 = data.frame(data1,asLabel)
+datasize = dim(data1)[1]
+train_idx = sample(datasize, datasize*0.8)
+indicator1 = rep(0,datasize)
+indicator1[train_idx] = 1 ## 1:train 0:valid
+data1 = data.frame(data1,indicator1)
+train = subset(data1,data1$indicator1==1)
+test = subset(data1,data1$indicator1==0)
+```
+
+```{r}
+print(test$asLabel)
+```
+## LDA_conventional
+```{r}
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(scales)
+library(reshape2)
+library(e1071)
+library(caret)
+library(MASS)
+lda_conventional <- lda(asLabel ~ Genre+Budget+Screens+Sequel+Gross, data = train)
+pred.lda.conventinoal <- predict(lda_conventional,newdata = test)
+test = na.omit(test) 
+table_LDA_conventional=table(pred.lda.conventinoal$class,test$asLabel)
+print(table_LDA_conventional)
+error_LDA_conventional=1-sum(diag(table_LDA_conventional))/sum(table_LDA_conventional)
+input.mat.lda.conventional = as.matrix(table_LDA_conventional)
+normalized.mat.lda.conventional = sweep(input.mat.lda.conventional, 2, colSums(input.mat.lda.conventional), "/" )
+melt.mat.lda.conventional = melt(normalized.mat.lda.conventional)
+```
+```{r}
+melt.mat.lda.conventional
+```
+```{r}
+ggplot(data = melt.mat.lda.conventional , aes(x=Var1, y=Var2, fill=value)) + 
+  geom_tile() + ggtitle("Confusion Matrix of LDA Conventional Feature") +
+  xlab("Prediction") + ylab("Actual") + labs(fill = "frequency")
+match_rate_LDA_conventional = 1-error_LDA_conventional
+match_rate_LDA_conventional
+```
+```{r}
+lda_social <- lda(asLabel ~ Aggregate.Followers+Sentiment+Views+Likes+Dislikes+Comments, data = train)
+pred.lda.social <- predict(lda_social,newdata = test)
+test = na.omit(test) 
+table_LDA_social=table(pred.lda.social$class,test$asLabel)
+print(table_LDA_social)
+error_LDA_social=1-sum(diag(table_LDA_social))/sum(table_LDA_social)
+input.mat.lda.social = as.matrix(table_LDA_social)
+normalized.mat.lda.social = sweep(input.mat.lda.social, 2, colSums(input.mat.lda.social), "/" )
+melt.mat.lda.social = melt(normalized.mat.lda.social)
+```
+```{r}
+melt.mat.lda.social
+```
+```{r}
+ggplot(data = melt.mat.lda.social , aes(x=Var1, y=Var2, fill=value)) + 
+  geom_tile() + ggtitle("Confusion Matrix of LDA Social Media Feature") +
+  xlab("Prediction") + ylab("Actual") + labs(fill = "frequency")
+match_rate_LDA_social = 1-error_LDA_social
+match_rate_LDA_social
+```
+
+```{r}
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(scales)
+library(reshape2)
+library(e1071)
+library(caret)
+library(MASS)
+qda_conventional <- qda(asLabel ~ Genre+Budget+Screens+Sequel+Gross, data = train)
+pred.qda.conventinoal <- predict(qda_conventional,newdata = test)
+test = na.omit(test) 
+#print(pred.qda.conventinoal$class)
+table_QDA=table(pred.qda.conventinoal$class,test$asLabel)
+print(table_QDA)
+error_QDA_conventional=1-sum(diag(table_QDA))/sum(table_QDA)
+input.mat.qda.conventional = as.matrix(table_QDA)
+normalized.mat.qda.conventional = sweep(input.mat.qda.conventional, 2, colSums(input.mat.qda.conventional), "/" )
+melt.mat.qda.conventional = melt(normalized.mat.qda.conventional)
+ggplot(data = melt.mat.qda.conventional , aes(x=Var1, y=Var2, fill=value)) + 
+  geom_tile() + ggtitle("Confusion Matrix of QDA Conventional Feature") +
+  xlab("Prediction") + ylab("Actual") + labs(fill = "frequency")
+match_rate_QDA = 1-error_QDA
+match_rate_QDA
+```
+```{r}
+qda_social <- qda(asLabel ~ Aggregate.Followers+Sentiment+Views+Likes+Dislikes+Comments, data = train)
+pred.qda.social <- predict(qda_social,newdata = test)
+test = na.omit(test) 
+table_QDA_social=table(pred.qda.social$class,test$asLabel)
+print(table_QDA_social)
+error_QDA_social=1-sum(diag(table_QDA_social))/sum(table_QDA_social)
+input.mat.qda.social = as.matrix(table_QDA_social)
+normalized.mat.qda.social = sweep(input.mat.qda.social, 2, colSums(input.mat.qda.social), "/" )
+melt.mat.qda.social = melt(normalized.mat.qda.social)
+```
+```{r}
+melt.mat.qda.social
+```
+```{r}
+ggplot(data = melt.mat.qda.social , aes(x=Var1, y=Var2, fill=value)) + 
+  geom_tile() + ggtitle("Confusion Matrix of QDA Social Media Feature") +
+  xlab("Prediction") + ylab("Actual") + labs(fill = "frequency")
+match_rate_QDA_social = 1-error_QDA_social
+match_rate_QDA_social
+```

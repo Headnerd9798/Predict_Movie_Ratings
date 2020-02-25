@@ -1,0 +1,188 @@
+
+```{r}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. 
+
+```{r}
+library("readxl")
+data1 = read_excel("../data/1415CSM_dataset.xlsx")
+i=1
+asLabel=""
+for (val in data1$Ratings) {
+  if(val<=4.9){
+    asLabel[i]="Poor"
+  }else if(val<=6.4){
+    asLabel[i]="Average"
+  }else if(val<=8.9){
+    asLabel[i]="Good"
+  }else if(val<=10){
+    asLabel[i]="Excellent"
+  }
+  i=i+1
+}
+# print(asLabel)
+data1 = data.frame(data1,asLabel)
+# print(data1)
+set.seed(10)
+datasize = dim(data1)[1]
+train_idx = sample(datasize, datasize*0.8)
+
+indicator1 = rep(0,datasize)
+indicator1[train_idx] = 1 # 1:train 0:valid
+data1 = data.frame(data1,indicator1)
+```
+
+## Decision Tree
+```{r}
+library(tree)
+train = subset(data1,data1$indicator1==1)
+valid = subset(data1,data1$indicator1==0)
+
+ctt1 = tree(asLabel~.-Year-Movie-Ratings,train)
+#ctv = tree(High~.-X.U.FEFF.ID-indicator-default.payment.next.month,valid)
+
+```
+
+## Prune Tree
+```{r}
+ctt1 = tree(asLabel~.-Year-Movie-Ratings,train,mindev=0.03)
+# I change mindev from 0.01 to 0.9 to see the best performance. choose 0.03
+```
+
+## Plot tree
+```{r}
+plot(ctt1)
+text(ctt1)
+summary(ctt1)
+ctt1
+```
+## Predict (below with the train and validation set)
+```{r}
+PredLabel1 = predict(ctt1,train,type="class")
+PredTreeScore1 = data.frame(predict(ctt1,train,type="vector"))
+train = data.frame(train,PredLabel1,PredTreeScore1)
+
+## valid
+PredLabelValid1 = predict(ctt1,valid,type="class")
+PredTreeScoreValid1 = data.frame(predict(ctt1,valid,type="vector"))
+valid = data.frame(valid,PredLabelValid1,PredTreeScoreValid1)
+```
+
+## Give out the validation error rate, which is 0.426, not bad.
+```{r}
+tablev1 = table(valid$PredLabelValid1,valid$asLabel)
+error_valid1 = 1 - sum(diag(tablev1)) / sum(tablev1)
+error_valid1
+```
+## Gains
+```{r}
+library(gains)
+# # train
+# print(asLabel)
+# print(train$Ratings)
+# print(PredTreeScore1$Poor)
+# print(PredTreeScore1$Average)
+# print(PredTreeScore1$Good)
+label2point=0;
+n=1
+for (m in train$asLabel) {
+  if(identical(m,"Poor")){
+    label2point[n]=4.9
+  }else if(identical(m,"Average")){
+    label2point[n]=6.4
+  }else if(identical(m,"Good")){
+    label2point[n]=8.9
+  }else if(identical(m,"Excellent")){
+    label2point[n]=10
+  }
+  n=n+1
+}
+print(label2point)
+print((PredTreeScore1$Poor)*4.9+(PredTreeScore1$Average)*6.4+(PredTreeScore1$Good)*8.9)
+
+# gtt = gains(actual=train$asLabel,predicted=PredTreeScore1,optimal=TRUE)
+gtt = gains(actual=label2point,
+            predicted=(PredTreeScore1$Poor)*4.9+(PredTreeScore1$Average)*6.4+(PredTreeScore1$Good)*8.9,
+            optimal=TRUE)
+cpt_y = gtt$cume.pct.of.total
+cpt_x = gtt$depth
+
+# # validation
+label2point_valid=0;
+q=1
+for (p in valid$asLabel) {
+  if(identical(p,"Poor")){
+    label2point_valid[q]=4.9
+  }else if(identical(p,"Average")){
+    label2point_valid[q]=6.4
+  }else if(identical(p,"Good")){
+    label2point_valid[q]=8.9
+  }else if(identical(p,"Excellent")){
+    label2point_valid[q]=10
+  }
+  q=q+1
+}
+print(label2point_valid)
+print((PredTreeScoreValid1$Poor)*4.9+(PredTreeScoreValid1$Average)*6.4+(PredTreeScoreValid1$Good)*8.9)
+
+# gtv = gains(actual=valid$asLabel,predicted=valid$PredTreeScoreValid,optimal=TRUE)
+gtv = gains(actual=label2point_valid,
+            predicted=(PredTreeScoreValid1$Poor)*4.9+(PredTreeScoreValid1$Average)*6.4+(PredTreeScoreValid1$Good)*8.9,
+            optimal=TRUE)
+cpv_y = gtv$cume.pct.of.total
+cpv_x = gtv$depth
+```
+
+## validation gains chart:
+```{r}
+library(rlang)
+# gtt = gains(actual=train$asLabel,predicted=PredTreeScore1,optimal=TRUE)
+# gtt = gains(actual=train$Ratings,predicted=PredTreeScore1$Average,optimal=TRUE)
+# cpt_y = gtt$cume.pct.of.total
+# cpt_x = gtt$depth
+
+gtt = gains(actual=label2point,
+            predicted=(PredTreeScore1$Poor)*4.9+(PredTreeScore1$Average)*6.4+(PredTreeScore1$Good)*8.9,
+            optimal=TRUE)
+cpt_y = gtt$cume.pct.of.total
+cpt_x = gtt$depth
+
+predictedValid1 = table(valid$PredLabelValid1)[1]
+
+xxv = cpv_x / 100 * 300
+yyv = cpv_y * predictedValid1
+#plot(xxv,yyv)
+xxv = prepend(xxv,0,before=1)
+yyv = prepend(yyv,0,before=1)
+fitv = lm(yyv~poly(xxv,3,raw=TRUE))
+xxv = 0:300
+model_yyv = predict(fitv,data.frame(xxv))
+png("../figures/CT_lift_chart_valid.png")
+plot(xxv, model_yyv, col="green",xlab="Number of total data", ylab="Cumulative number of target data")
+best_yyv = rep(predictedValid1,301)
+for(i in 0:predictedValid1){
+  best_yyv[i+1] = i
+}
+lines(xxv,best_yyv,col="red",lwd=3)
+base_yyv = predictedValid1 / 300 * xxv
+lines(xxv,base_yyv,col="blue")
+legend(1750,75, legend=c("best curve","model", "baseline"), col = c("red","green","blue"), lwd=c(1,1,1),cex=1)
+title("Lift chart of CT (validation)")
+dev.off()
+library(geiger)
+#area1 = geiger:::.area.between.curves(xx,base_yy,yy)
+#area2 = geiger:::.area.between.curves(xx,best_yy,yy)
+#area1 / area2
+a1v = sum(model_yyv-base_yyv)
+a2v = sum(best_yyv-base_yyv)
+a1v/a2v
+```
+
+
+
+
+

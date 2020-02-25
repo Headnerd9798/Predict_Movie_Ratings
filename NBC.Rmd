@@ -1,0 +1,151 @@
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+## import xlsx and make label
+```{r}
+library(readxl)
+data1 <- read_xlsx("../data/1415CSM_dataset.xlsx")
+data1$Genre   <- as.factor(data1$Genre)
+data1$Sequel  <- as.factor(data1$Sequel)
+i=1
+asLabel=""
+for (val in data1$Ratings) {
+  if(val<=4.9){
+    asLabel[i]="Poor"
+  }else if(val<=6.4){
+    asLabel[i]="Average"
+  }else if(val<=7.4){
+    asLabel[i]="Good"
+  }else if(val<=10){
+    asLabel[i]="Excellent"
+  }
+  i=i+1
+}
+data1 = data.frame(data1,asLabel)
+data1 
+```
+
+## split the whole dataset into train and test dataset (80% : 20%)
+```{r}
+set.seed(10) ## Randomize set.seed to 10
+data1 = data.frame(data1,asLabel)
+datasize = dim(data1)[1]
+train_idx = sample(datasize, datasize*0.8)
+indicator1 = rep(0,datasize)
+indicator1[train_idx] = 1 ## 1:train 0:valid
+data1 = data.frame(data1,indicator1)
+train = subset(data1,data1$indicator1==1)
+test = subset(data1,data1$indicator1==0)
+```
+
+## Brief about Train and Test Dataset
+```{r}
+summary(train)
+summary(test)
+```
+## Conventional Features 
+```{r}
+library(caret)
+library(e1071)
+NBclassfier_conventional = naiveBayes(asLabel ~ Genre+Budget+Screens+Sequel+Gross, data = train)
+print(NBclassfier_conventional)
+predict(NBclassfier_conventional, newdata = train)
+summary(predict(NBclassfier_conventional, newdata = train))
+```
+```{r}
+library(naivebayes)
+library(ggplot2)
+printALL_conventional=function(model){
+  trainPred=predict(model, newdata = train, type = "class")
+  trainTable=table(train$asLabel, trainPred)
+  testPred=predict(NBclassfier_conventional, newdata=test, type="class")
+  testTable=table(test$asLabel, testPred)
+  trainAcc=(trainTable[1,1]+trainTable[2,2]+trainTable[3,3])/sum(trainTable)
+  testAcc=(testTable[1,1]+testTable[2,2]+testTable[3,3])/sum(testTable)
+  message("Contingency Table for Training Data")
+  print(trainTable)
+  message("Contingency Table for Test Data")
+  print(testTable)
+  message("Accuracy")
+  print(round(cbind(trainAccuracy=trainAcc, testAccuracy=testAcc),3))
+}
+newNBclassifier_conventional=naive_bayes(asLabel ~ Genre+Budget+Screens+Sequel+Gross,usekernel=T, data=train)
+printALL_conventional(newNBclassifier_conventional)
+```
+## Confusion Matrix of Train dataset - Converntional Features
+```{r}
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(scales)
+library(reshape2)
+
+NB_test_predict_conventional  <- predict(NBclassfier_conventional, newdata = test)
+cfm_test_conventional  <- confusionMatrix(NB_test_predict_conventional,test$asLabel)
+input.mat.test_conventional = as.matrix(cfm_test_conventional)
+normalized.mat.test_conventional = sweep(input.mat.test_conventional, 2, colSums(input.mat.test_conventional), "/" )
+melt.mat.test_conventional <- melt(normalized.mat.test_conventional)
+ggplot(data = melt.mat.test_conventional, aes(x=Var1, y=Var2, fill=value)) + 
+  geom_tile() + ggtitle("Confusion Matrix of NaiveBayesian conventional feature") +
+  xlab("Prediction") + ylab("Actual") + labs(fill = "frequency")
+cfm_test_conventional
+```
+
+##### Social Media Features #####
+
+```{r}
+library(caret)
+library(e1071)
+NBclassfier_social_media = naiveBayes(asLabel ~ Aggregate.Followers+Sentiment+Views+Likes+Dislikes+Comments, data = train)
+print(NBclassfier_social_media)
+predict(NBclassfier_social_media, newdata = train)
+summary(predict(NBclassfier_social_media, newdata = train))
+```
+```{r}
+library(naivebayes)
+library(ggplot2)
+printALL_social=function(model){
+  trainPred=predict(model, newdata = train, type = "class")
+  trainTable=table(train$asLabel, trainPred)
+  testPred=predict(NBclassfier_social_media, newdata=test, type="class")
+  testTable=table(test$asLabel, testPred)
+  trainAcc=(trainTable[1,1]+trainTable[2,2]+trainTable[3,3])/sum(trainTable)
+  testAcc=(testTable[1,1]+testTable[2,2]+testTable[3,3])/sum(testTable)
+  message("Contingency Table for Training Data")
+  print(trainTable)
+  message("Contingency Table for Test Data")
+  print(testTable)
+  message("Accuracy")
+  print(round(cbind(trainAccuracy=trainAcc, testAccuracy=testAcc),3))
+}
+newNBclassifier_social_media=naive_bayes(asLabel ~ Aggregate.Followers+Sentiment+Views+Likes+Dislikes+Comments,usekernel=T, data=train)
+printALL_social(newNBclassifier_social_media)
+```
+#### Confusion Matrix of Test dataset - Social Media
+```{r}
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(scales)
+library(reshape2)
+NB_test_predict_social_media  <- predict(NBclassfier_social_media, newdata = test)
+cfm_test_social_media  <- confusionMatrix(NB_test_predict_social_media,test$asLabel)
+input.mat.test_social_media = as.matrix(cfm_test_social_media)
+normalized.mat.test_social_media = sweep(input.mat.test_social_media, 2, colSums(input.mat.test_social_media), "/" )
+melt.mat.test_social_media <- melt(normalized.mat.test_social_media)
+ggplot(data = melt.mat.test_social_media, aes(x=Var1, y=Var2, fill=value)) + 
+  geom_tile() + ggtitle("Confusion Matrix of NaiveBayesian social media feature") +
+  xlab("Prediction") + ylab("Actual") + labs(fill = "frequency")
+cfm_test_social_media
+```
+
+
+
